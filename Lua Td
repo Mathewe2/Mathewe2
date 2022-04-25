@@ -1,0 +1,129 @@
+local Players = game:GetService("Players")
+local ts = game:GetService("TweenService")
+local player = Players.LocalPlayer 
+local mouse = player:GetMouse()
+mouse.TargetFilter = workspace.pointerignore
+local TowerFolder = workspace.Towers
+local EnemiesFolder = workspace.Enemies
+local activetower = player:WaitForChild("GameStats"):WaitForChild("ActiveTower")
+local rotation = 0
+local tower_storage = game:GetService("ReplicatedStorage").Towers
+local click = 0
+local inputservice = game:GetService("UserInputService")
+local current_unit = nil
+workspace:WaitForChild("Checkpoints").Parent = game.Lighting
+
+local function updatefilter()
+	if activetower.Value ~= "none" then
+		TowerFolder.Parent = workspace.pointerignore
+		EnemiesFolder.Parent = workspace.pointerignore
+		for _, v in pairs(workspace.pointerignore.redzones:GetDescendants()) do
+			if v:IsA("BasePart") then v.Transparency = 0.5 end
+		end
+	else
+		TowerFolder.Parent = workspace
+		EnemiesFolder.Parent = workspace
+		for _, v in pairs(workspace.pointerignore.redzones:GetDescendants()) do
+			if v:IsA("BasePart") then v.Transparency = 1 end
+		end
+	end
+end
+
+local function checkred(anchor, placement)
+	local red = false
+	local parts = anchor:GetTouchingParts()
+	local req_name = "PlaceGround"
+	if placement == "Ground" then req_name = "PlaceGround"
+	elseif placement == "High" then req_name = "PlaceHigh"
+	elseif placement == "Water" then req_name = "PlaceWater"
+	end
+	local foundground = false
+	for i = 1, #parts do
+		if parts[i].Parent == workspace.pointerignore.redzones then red = true end
+		if parts[i].Name == req_name then foundground = true end
+	end
+	if red == true or foundground == false then return true
+	else
+		return false
+	end
+end
+
+local function new_rot()
+	if rotation == 0 then return(Vector3.new(1, 0, 0)) end
+	if rotation == 1 then return(Vector3.new(1, 0, 1)) end
+	if rotation == 2 then return(Vector3.new(0, 0, 1)) end
+	if rotation == 3 then return(Vector3.new(-1, 0, 1)) end
+	if rotation == 4 then return(Vector3.new(-1, 0, 0)) end
+	if rotation == 5 then return(Vector3.new(-1, 0, -1)) end
+	if rotation == 6 then return(Vector3.new(0, 0, -1)) end
+	if rotation == 7 then return(Vector3.new(1, 0, -1)) end
+end
+
+inputservice.InputBegan:Connect(function(input, gameprocessedevent)
+	if gameprocessedevent or activetower.Value == "none" then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.R then
+		rotation = (rotation + 1)%8
+	end
+end)
+
+activetower.Changed:Connect(function()
+	updatefilter()
+	rotation = 0
+	if activetower.Value == "none" then return end
+	if tower_storage:FindFirstChild(activetower.Value) == nil 
+		or tower_storage:FindFirstChild(activetower.Value):FindFirstChild("level1") == nil 
+		or tower_storage:FindFirstChild(activetower.Value):FindFirstChild("level1"):FindFirstChild("Anchor") == nil then return end
+	click += 1
+	local checker = click
+	local unit = tower_storage:FindFirstChild(activetower.Value).level1:Clone()
+	unit.Name = activetower.Value
+	local pointer = game.ReplicatedStorage.towerpointer:Clone()
+	pointer.Parent = workspace.pointerignore
+	unit.Parent = workspace.pointerignore
+	current_unit = unit
+	for _, v in pairs(unit:GetDescendants()) do
+		if v:IsA("BasePart") then v.Transparency /= 2 end
+	end
+	local range_display = Instance.new("Part")
+	range_display.Color = Color3.new(0, 0.333333, 1)
+	range_display.Orientation = Vector3.new(0, 0, 90)
+	range_display.Size = Vector3.new(0.2, 0.2, 0.2)
+	range_display.Material = Enum.Material.Neon
+	range_display.Transparency = 0.4
+	range_display.Shape = Enum.PartType.Cylinder
+	range_display.Anchored = true
+	range_display.CanCollide = false
+	range_display.Position = unit.Anchor.Position
+	range_display.Parent = workspace.pointerignore.temp
+	range_display.CastShadow = false
+	local range = require(tower_storage:FindFirstChild(activetower.Value):FindFirstChild("TowerData")).Stats["Range"]
+	if range == nil then
+		range_display.Transparency = 1
+	else
+		range_display.Size = Vector3.new(0.2, range[1] * 2, range[1] * 2)
+	end
+	local connection = unit.Anchor.Touched:Connect(function() end)
+	while checker == click and unit.Name == activetower.Value do
+		if mouse.Target ~= nil then
+			ts:Create(unit.Anchor, TweenInfo.new(0.15), {CFrame = CFrame.lookAt(mouse.Hit.p, mouse.Hit.p + new_rot())}):Play()
+			pointer.Anchor.CFrame = unit.Anchor.CFrame
+			range_display.Position = unit.Anchor.Position
+		end
+		if checkred(unit.Anchor, require(tower_storage:FindFirstChild(activetower.Value):FindFirstChild("TowerData")).Placement) == true then
+			pointer.pointer.Color = Color3.new(1, 0, 0)
+		else
+			pointer.pointer.Color = Color3.new(0, 1, 1)
+		end
+		game:GetService("RunService").RenderStepped:Wait()
+	end
+	if current_unit == unit then current_unit = nil end
+	unit:Destroy()
+	pointer:Destroy()
+	range_display:Destroy()
+end)
+
+mouse.Button1Down:Connect(function()
+	if current_unit ~= nil and activetower.Value ~= "none" and mouse.Target ~= nil then
+		game.ReplicatedStorage.Remotes.PlaceTower:FireServer(mouse.Hit.p, rotation)
+	end
+end)
